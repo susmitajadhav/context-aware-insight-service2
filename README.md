@@ -1,4 +1,4 @@
-# 🚀 Context-Aware Insight Service
+#  Context-Aware Insight Service
 
 A resilient backend service that generates AI-driven insights using tenant-specific context, with production-grade fault tolerance mechanisms like retry, timeout handling, and circuit breaker.
 
