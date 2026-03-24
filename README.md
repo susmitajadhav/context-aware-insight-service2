@@ -1,328 +1,262 @@
-#  Context-Aware Insight Service (V2)
+# 🚀 Context-Aware Insight Service
 
-A **production-oriented backend service** that generates AI-driven insights using tenant-specific business context.
-Built to demonstrate **resilience, observability, and multi-tenant system design**.
-
----
-
-#  What This System Does
-
-Given:
-
-```json
-{
-  "tenantId": "tenant_retail_india",
-  "queryText": "sales growth"
-}
-```
-
-The system:
-
-1. Fetches tenant context from PostgreSQL
-2. Enriches the request
-3. Calls AI service
-4. Returns contextual insight
+A resilient backend service that generates AI-driven insights using tenant-specific context, with production-grade fault tolerance mechanisms like retry, timeout handling, and circuit breaker.
 
 ---
 
-#  Architecture (Real Flow)
+#  What This System Actually Solves
 
-```
-Client Request
-   ↓
-Express Routes
-   ↓
-Middleware Layer
-   - Request ID
-   - Rate Limiting (per tenant)
-   ↓
-Controller
-   ↓
-Service Layer
-   - Insight Service
-   - AI Service (Retry + Timeout + Circuit Breaker)
-   ↓
-Repository Layer
-   ↓
-PostgreSQL (tenant context)
+Most AI integrations fail in real-world systems due to:
+- Slow responses (timeouts)
+- Intermittent failures
+- Cascading failures under load
+- Lack of tenant isolation
 
-External Dependency:
-Mock AI Service
-```
+This system is designed to explicitly handle these problems.
 
 ---
 
-#  Tech Stack
+#  End-to-End Request Flow
 
-* Node.js (ES Modules)
-* Express.js
-* PostgreSQL
-* Axios (HTTP client)
-* Nodemon (dev)
-* Custom structured logger
+Client → Controller → Service Layer → Cache → DB → Retry → Circuit Breaker → AI Service → Response → Cache → Client
 
 ---
 
-#  Key Engineering Features
+# 🔍 Detailed Execution Flow
 
-## 1. Multi-Tenancy
+## Step 1: Request Received
+- Request is validated
+- requestId generated for tracing
 
-* Context fetched per tenant from DB
-* Strict validation of tenantId
+## Step 2: Cache Layer
+- Key = tenantId + queryText
+- Cache hit → return immediately
+- Cache miss → continue
 
----
+## Step 3: Tenant Context Fetch
+- Fetch context from DB
+- Ensures tenant-specific behavior
 
-## 2. Resilience (CORE STRENGTH)
+## Step 4: Retry Mechanism
+- Exponential backoff:
+  delay = baseDelay * (2^attempt)
 
-* Retry mechanism (configurable)
-* Timeout protection
-* Circuit breaker (prevents cascading failures)
+## Step 5: Circuit Breaker
+- Opens when failure threshold reached
+- Prevents further load on AI
 
- System does NOT blindly depend on AI
+## Step 6: AI Call
+- Axios with timeout
+- Handles timeout, network, and response errors
 
----
-
-## 3. Observability
-
-* RequestId tracking (end-to-end)
-* Structured logs
-* Latency measurement (API + dependencies)
-
----
-
-## 4. Health Monitoring
-
-```
-GET /api/health
-```
-
-Supports:
-
-* Healthy
-* Degraded (partial failure)
-* Unhealthy (critical failure)
+## Step 7: Response Handling
+- Success → cache result
+- Failure → structured error returned
 
 ---
 
-## 5. Rate Limiting (Protection Layer)
+#  Environment Configuration
 
-* Per-tenant limit (in-memory)
-* Prevents abuse
-* Returns HTTP 429
+Create a `.env` file:
 
----
-
-# 🔌 API
-
-## POST /api/v1/insight-query
-
-### Request
-
-```json
-{
-  "tenantId": "tenant_retail_india",
-  "queryText": "sales growth"
-}
-```
-
----
-
-### Success
-
-```json
-{
-  "status": "SUCCESS",
-  "insight": "Insight for \"sales growth\" in retail (India)",
-  "latencyMs": 207,
-  "requestId": "req-xxxx"
-}
-```
-
----
-
-### Failure Examples
-
-#### Invalid Input → 400
-
-```json
-{
-  "status": "error",
-  "message": "Invalid input"
-}
-```
-
-#### Tenant Not Found → 404
-
-```json
-{
-  "status": "error",
-  "message": "No context found for tenant"
-}
-```
-
-#### AI Failure → 502
-
-```json
-{
-  "status": "error",
-  "message": "AI service temporarily unavailable"
-}
-```
-
-#### Rate Limit → 429
-
-```json
-{
-  "status": "error",
-  "message": "Too many requests"
-}
-```
-
----
-
-# 🧪 Test Scenarios (Demonstrated)
-
-| Scenario         | Expected Behavior  |
-| ---------------- | ------------------ |
-| Success          | Insight returned   |
-| Invalid Input    | 400 error          |
-| Tenant Not Found | 404 error          |
-| AI Failure       | 502 error          |
-| Timeout          | Retry + fail       |
-| Rate Limit       | 429 error          |
-| DB Down          | System = unhealthy |
-
----
-
-#  Setup
-
-## 1. Install
-
-```bash
-npm install
-```
-
----
-
-## 2. Environment (.env)
-
-```env
 PORT=3000
 
-DB_HOST=localhost
+DB_HOST=db
 DB_PORT=5432
 DB_USER=postgres
 DB_PASSWORD=your_password
 DB_NAME=insight_db_v2
 
-AI_SERVICE_URL=http://localhost:4000/mock-ai
+AI_SERVICE_URL=http://ai:4000/mock-ai
 AI_TIMEOUT_MS=1000
+
 RETRY_COUNT=2
 RETRY_DELAY_MS=100
 
-AI_FAILURE_RATE=0.3
+AI_FAILURE_RATE=0
 AI_DELAY_MS=200
-```
 
 ---
 
-## 3. Run DB Script
+#  How to Run
 
-Execute:
-
-```
-db/schema.sql
-```
+docker compose up --build
 
 ---
 
-## 4. Start Services
+#  API Endpoint
 
-```bash
-npm run dev
-```
+POST http://localhost:3001/api/v1/insight-query
 
-```bash
-node src/utils/mock-ai-server.js
-```
+Request Body:
 
----
-
-# ⚖️ Key Design Decisions (This is what interviewer cares about)
-
-## 1. In-Memory Rate Limiting
-
-* Chosen for simplicity
-* Not horizontally scalable
-* Production alternative → Redis
+{
+  "tenantId": "tenant_retail_india",
+  "queryText": "sales trend"
+}
 
 ---
 
-## 2. Synchronous Processing
+#  COMPLETE TESTING GUIDE
 
-* Simpler request-response model
-* Trade-off: latency depends on AI
-* Future → async queue (Kafka/SQS)
+## 1. Success Case
 
----
+Config:
+AI_FAILURE_RATE=0  
+AI_DELAY_MS=200  
 
-## 3. Circuit Breaker
-
-* Stops repeated failing calls
-* Protects system stability
-
----
-
-## 4. Retry Strategy
-
-* Improves reliability
-* Limited retries to avoid overload
+Expected:
+- status: SUCCESS
+- cached: false (first call)
+- cached: true (second call)
 
 ---
 
-#  Known Limitations
+## 2. Cache Validation
 
-* No distributed rate limiting
-* No caching layer
-* AI health check is not lightweight
-* No queue-based async processing
+Steps:
+1. Send same request twice
 
- These are intentional trade-offs for scope
+Expected:
+- First → CACHE MISS
+- Second → CACHE HIT
+
+---
+
+## 3. AI Failure + Retry
+
+Config:
+AI_FAILURE_RATE=1  
+
+Expected:
+- Retry attempts in logs
+- RETRY_EXHAUSTED
+- Final failure response
+
+---
+
+## 4. Timeout Case
+
+Config:
+AI_DELAY_MS=3000  
+AI_TIMEOUT_MS=1000  
+
+Expected response:
+
+{
+  "status": "error",
+  "message": "AI request timed out after retries",
+  "meta": {
+    "type": "TIMEOUT",
+    "timeoutMs": 1000,
+    "retryCount": 2
+  }
+}
+
+---
+
+## 5. Circuit Breaker
+
+Steps:
+1. Set AI_FAILURE_RATE=1
+2. Send multiple requests
+
+Expected:
+{
+  "type": "BREAKER_OPEN"
+}
+
+---
+
+## 6. Multi-Tenant Behavior
+
+Test with:
+
+tenant_retail_india  
+tenant_healthcare_india  
+
+Expected:
+- Different results
+- No cache collision
+
+---
+
+## 7. Invalid Input
+
+Send empty body:
+
+{}
+
+Expected:
+- 400 validation error
+
+---
+
+#  Security Considerations
+
+- Input validation prevents malformed requests
+- Tenant-aware cache prevents data leakage
+- Structured error responses avoid exposing internals
+- Circuit breaker protects downstream services
+
+---
+
+# What Is Implemented Beyond Exercise
+
+- Retry with exponential backoff
+- Circuit breaker (Opossum)
+- Structured error propagation
+- Observability with requestId logging
+- AI failure simulation (AI_FAILURE_RATE)
+- Timeout simulation (AI_DELAY_MS)
+- Dockerized setup
+
+---
+
+#  Design Trade-offs
+
+## In-memory Cache
++ Fast  
+- Not scalable (no Redis)
+
+## Retry
++ Handles transient failures  
+- Adds latency
+
+## Circuit Breaker
++ Protects system  
+- Temporary rejection of requests
+
+---
+
+#  Limitations
+
+- No Redis cache
+- No rate limiting
+- No distributed tracing
+- No async queue
 
 ---
 
 #  Future Improvements
 
-* Redis-based rate limiting
-* Response caching (reduce AI calls)
-* Async processing with queue
-* Metrics (Prometheus + Grafana)
+- Redis caching
+- Queue-based processing
+- Tenant rate limiting
+- Metrics and monitoring
 
 ---
 
-#  What This Demonstrates
+#  Final Note
 
-This project is NOT CRUD.
+This system is designed for failure scenarios, not just success paths.
 
 It demonstrates:
-
-* System design thinking
-* Failure handling
-* Dependency management
-* Production readiness mindset
+- Resilience
+- Fault tolerance
+- Production-grade backend thinking
 
 ---
 
-#  Author
-
-Built as part of a **CTO-level backend exercise**.
-
-Focus:
-
-* Resilience engineering
-* Scalable design thinking
-* Clean architecture
-
----
-
-
+# 👨‍💻 Author
+Susmita Jdhav
