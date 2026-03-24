@@ -47,15 +47,15 @@ export const createInsight = async ({
   const normalizedTenantId = tenantId.trim();
   const normalizedQueryText = queryText.trim();
 
+  const cacheKey = generateCacheKey({
+    tenantId: normalizedTenantId,
+    queryText: normalizedQueryText,
+  });
+
   try {
     // =========================
     // 2. CHECK CACHE
     // =========================
-    const cacheKey = generateCacheKey({
-      tenantId: normalizedTenantId,
-      queryText: normalizedQueryText,
-    });
-
     const cached = getCache(cacheKey);
 
     if (cached) {
@@ -155,7 +155,7 @@ export const createInsight = async ({
     };
 
     // =========================
-    // 5. STORE IN CACHE
+    // 5. STORE IN CACHE (ONLY SUCCESS)
     // =========================
     setCache(cacheKey, response);
 
@@ -188,6 +188,7 @@ export const createInsight = async ({
       tenantId: normalizedTenantId,
       event: 'INSIGHT_FAILED',
       error: error.message,
+      errorType: error.type,
       errorCode: error.code || 'UNKNOWN_ERROR',
       latencyMs: latency,
     });
@@ -204,13 +205,21 @@ export const createInsight = async ({
       requestId: reqId,
     });
 
+    // 🔥 PRESERVE METADATA FOR CONTROLLER
+    if (error.type) {
+      error.retryCount = error.retryCount || config.ai.retryCount;
+      throw error;
+    }
+
     throw error;
   }
 };
 
+
 // =========================
 // Helper: Safe Logging Wrapper
 // =========================
+
 const safeLog = async ({
   tenantId,
   queryText,

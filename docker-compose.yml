@@ -1,0 +1,48 @@
+services:
+  app:
+    build: .
+    container_name: insight_app
+    ports:
+      - "3001:3000"
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - ai
+    networks:
+      - insight_net
+
+  db:
+    image: postgres:15
+    container_name: insight_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: sucha@24
+      POSTGRES_DB: insight_db_v2
+    ports:
+      - "5433:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    networks:
+      - insight_net
+
+  # ✅ FIXED POSITION
+  ai:
+    build:
+      context: .
+      dockerfile: Dockerfile.ai
+    container_name: mock_ai
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env
+    networks:
+      - insight_net
+
+volumes:
+  db_data:
+
+networks:
+  insight_net:

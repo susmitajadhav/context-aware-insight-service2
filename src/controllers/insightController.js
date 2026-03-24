@@ -1,17 +1,18 @@
-
+// =========================
 // FILE: src/controllers/insightController.js
-
+// =========================
 
 import { createInsight } from '../services/insightService.js';
 import { logger } from '../utils/logger.js';
 import { insightSchema } from '../validators/insightValidator.js';
+import { config } from '../config/index.js';
 
 export const createInsightController = async (req, res) => {
   const requestId = req.requestId;
 
-  
+  // =========================
   // Request log
-
+  // =========================
   logger.info({
     requestId,
     event: 'REQUEST_RECEIVED',
@@ -20,9 +21,9 @@ export const createInsightController = async (req, res) => {
     body: req.body,
   });
 
-
+  // =========================
   // Validation
-
+  // =========================
   const { error, value } = insightSchema.validate(req.body);
 
   if (error) {
@@ -42,9 +43,9 @@ export const createInsightController = async (req, res) => {
   const { tenantId, queryText } = value;
 
   try {
-  
+    // =========================
     // Call service
-   
+    // =========================
     const result = await createInsight({
       tenantId,
       queryText,
@@ -69,10 +70,87 @@ export const createInsightController = async (req, res) => {
       event: 'REQUEST_FAILED',
       tenantId,
       error: error.message,
+      errorType: error.type,
       errorCode: error.code || 'UNKNOWN_ERROR',
     });
 
-    // Known errors
+    // =========================
+    // TIMEOUT ERROR
+    // =========================
+    if (error.type === 'TIMEOUT') {
+      return res.status(502).json({
+        status: 'error',
+        message: 'AI request timed out after retries',
+        meta: {
+          type: 'TIMEOUT',
+          timeoutMs: error.timeoutMs,
+          retryCount: error.retryCount ?? config.ai.retryCount,
+        },
+        requestId,
+      });
+    }
+
+    // =========================
+    // CIRCUIT BREAKER
+    // =========================
+    if (error.type === 'BREAKER_OPEN') {
+      return res.status(503).json({
+        status: 'error',
+        message: 'AI circuit breaker is open',
+        meta: {
+          type: 'BREAKER_OPEN',
+        },
+        requestId,
+      });
+    }
+
+    // =========================
+    // AI FAILURE
+    // =========================
+    if (error.type === 'AI_FAILURE') {
+      return res.status(502).json({
+        status: 'error',
+        message: 'AI service returned an error',
+        meta: {
+          type: 'AI_FAILURE',
+          statusCode: error.statusCode,
+          retryCount: error.retryCount ?? config.ai.retryCount,
+        },
+        requestId,
+      });
+    }
+
+    // =========================
+    // NETWORK ERROR
+    // =========================
+    if (error.type === 'NETWORK_ERROR') {
+      return res.status(502).json({
+        status: 'error',
+        message: 'AI service unreachable',
+        meta: {
+          type: 'NETWORK_ERROR',
+        },
+        requestId,
+      });
+    }
+
+    // =========================
+    // INVALID RESPONSE
+    // =========================
+    if (error.type === 'INVALID_RESPONSE') {
+      return res.status(502).json({
+        status: 'error',
+        message: 'Invalid response from AI service',
+        meta: {
+          type: 'INVALID_RESPONSE',
+        },
+        requestId,
+      });
+    }
+
+    // =========================
+    // Known fallback
+    // =========================
     if (error.statusCode) {
       return res.status(error.statusCode).json({
         status: 'error',
@@ -81,7 +159,9 @@ export const createInsightController = async (req, res) => {
       });
     }
 
+    // =========================
     // Unknown fallback
+    // =========================
     return res.status(500).json({
       status: 'error',
       message: 'Internal server error',

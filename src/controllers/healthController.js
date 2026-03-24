@@ -1,4 +1,3 @@
-
 // FILE: src/controllers/healthController.js
 
 import pool from '../config/db.js';
@@ -35,10 +34,16 @@ export const healthCheckController = async (req, res) => {
   try {
     const aiStart = Date.now();
 
-    await axios.post(config.ai.url, {
-      queryText: 'health check',
-      context: { industry: 'test', region: 'test' },
-    });
+    await axios.post(
+      config.ai.url,
+      {
+        queryText: 'health check',
+        context: { industry: 'test', region: 'test' },
+      },
+      {
+        timeout: config.ai.timeoutMs || 1000, // 🔥 FIX: prevent hanging requests
+      }
+    );
 
     aiLatency = Date.now() - aiStart;
     aiStatus = 'ok';
